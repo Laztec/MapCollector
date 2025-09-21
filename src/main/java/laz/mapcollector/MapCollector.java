@@ -265,7 +265,7 @@ public class MapCollector implements ClientModInitializer {
 	}
 
 	private String mapHash(byte[] data) throws Exception {
-		MessageDigest md = MessageDigest.getInstance("SHA-256");
+		MessageDigest md = MessageDigest.getInstance("MD5");
 		byte[] digest = md.digest(data);
 		StringBuilder sb = new StringBuilder();
 		for (byte b : digest) sb.append(String.format("%02x", b));
