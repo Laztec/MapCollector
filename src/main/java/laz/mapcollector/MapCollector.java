@@ -212,16 +212,16 @@ public class MapCollector implements ClientModInitializer {
 				int colorByte = colors[idx] & 0xFF;
 				int argb;
 				if (colorByte == 0) {
-					argb = 0xFFFFFFFF;
+					argb = 0x00000000;
 				} else {
 					int base = (colorByte >> 2) & 0x3F;
 					int shade = colorByte & 3;
 					int rgb = MAP_PALETTE[base];
 					float m = switch (shade) {
-						case 0 -> 135f / 255f;
-						case 1 -> 180f / 255f;
-						case 2 -> 220f / 255f;
-						default -> 1f;
+						case 0 -> 0.71f;
+						case 1 -> 0.86f;
+						case 2 -> 1.0f;
+						default -> 0.53f;
 					};
 					int r = (int) (((rgb >> 16) & 0xFF) * m);
 					int g = (int) (((rgb >> 8) & 0xFF) * m);
