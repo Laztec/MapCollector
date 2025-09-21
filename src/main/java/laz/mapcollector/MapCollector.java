@@ -26,6 +26,7 @@ import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Hand;
+import net.minecraft.util.WorldSavePath;
 import org.yaml.snakeyaml.Yaml;
 
 import javax.imageio.ImageIO;
@@ -124,7 +125,7 @@ public class MapCollector implements ClientModInitializer {
 			String hash = mapHash(mapData.colors);
 			String name = (overrideName != null && !overrideName.isBlank()) ? overrideName : mapData.stack.getName().getString();
 
-			Path folder = MinecraftClient.getInstance().runDirectory.toPath().resolve(FOLDER);
+			Path folder = getWorldFolder();
 			Files.createDirectories(folder);
 			Path indexPath = folder.resolve(INDEX);
 			List<String> lines = Files.exists(indexPath) ? Files.readAllLines(indexPath, StandardCharsets.UTF_8) : new ArrayList<>();
@@ -157,7 +158,7 @@ public class MapCollector implements ClientModInitializer {
 
 		try {
 			String hash = mapHash(mapData.colors);
-			Path indexPath = MinecraftClient.getInstance().runDirectory.toPath().resolve(FOLDER).resolve(INDEX);
+			Path indexPath = getWorldFolder().resolve(INDEX);
 			if (!Files.exists(indexPath)) { msg("No map file found."); return; }
 
 			List<String> lines = Files.readAllLines(indexPath, StandardCharsets.UTF_8);
@@ -175,7 +176,7 @@ public class MapCollector implements ClientModInitializer {
 	private void confirmCommand() {
 		if (pendingHash == null) { msg("No pending save to confirm."); return; }
 		try {
-			Path folder = MinecraftClient.getInstance().runDirectory.toPath().resolve(FOLDER);
+			Path folder = getWorldFolder();
 			Files.createDirectories(folder);
 			saveMapData(folder, pendingHash, pendingName, pendingMapId, pendingColors);
 		} catch (Exception e) { msg("Error: " + e.getMessage()); }
@@ -234,6 +235,21 @@ public class MapCollector implements ClientModInitializer {
 		return img;
 	}
 
+	private Path getWorldFolder() {
+		MinecraftClient client = MinecraftClient.getInstance();
+		Path base = client.runDirectory.toPath().resolve(FOLDER);
+
+		if (client.isInSingleplayer() && client.getServer() != null) {
+			String worldName = client.getServer().getSavePath(WorldSavePath.ROOT).getParent().getFileName().toString();
+			return base.resolve("singleplayer_" + worldName);
+		} else if (client.getCurrentServerEntry() != null) {
+			String address = client.getCurrentServerEntry().address.split(":")[0];
+			return base.resolve(address);
+		} else {
+			return base.resolve("unknown");
+		}
+	}
+
 	private void saveMapData(Path folder, String hash, String name, String mapId, byte[] colors) throws IOException {
 		Path pngPath = folder.resolve("map_" + hash + ".png");
 		try (OutputStream os = Files.newOutputStream(pngPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
@@ -241,9 +257,7 @@ public class MapCollector implements ClientModInitializer {
 		}
 		Path indexPath = folder.resolve(INDEX);
 
-		// bad + lazy
 		String safeName = name.replace(",", "");
-
 		String line = safeName + "," + mapId + "," + hash;
 		Files.write(indexPath, Collections.singletonList(line), StandardCharsets.UTF_8,
 				Files.exists(indexPath) ? StandardOpenOption.APPEND : StandardOpenOption.CREATE);
