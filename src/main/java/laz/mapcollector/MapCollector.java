@@ -261,7 +261,14 @@ public class MapCollector implements ClientModInitializer {
 		String line = safeName + "," + mapId + "," + hash;
 		Files.write(indexPath, Collections.singletonList(line), StandardCharsets.UTF_8,
 				Files.exists(indexPath) ? StandardOpenOption.APPEND : StandardOpenOption.CREATE);
-		msg("Saved map: " + pngPath.getFileName());
+
+		Text clickable = Text.literal("Saved map: " + pngPath.getFileName())
+				.styled(style -> style.withClickEvent(
+						new net.minecraft.text.ClickEvent.OpenFile(
+								pngPath.toAbsolutePath().toString()
+						)));
+
+		msg(clickable);
 	}
 
 	private String mapHash(byte[] data) throws Exception {
@@ -272,13 +279,17 @@ public class MapCollector implements ClientModInitializer {
 		return sb.toString();
 	}
 
-	private void msg(String s) {
+	private void msg(Text extra) {
 		MinecraftClient client = MinecraftClient.getInstance();
 		if (client.player != null) {
-			MutableText text = Text.literal("[Map Collector] ").formatted(Formatting.GOLD)
-					.append(Text.literal(s).formatted(Formatting.WHITE));
-			client.player.sendMessage(text, false);
+			MutableText prefix = Text.literal("[Map Collector] ").formatted(Formatting.GOLD);
+			MutableText body   = extra.copy().formatted(Formatting.WHITE);
+			client.player.sendMessage(prefix.append(body), false);
 		}
+	}
+
+	private void msg(String s) {
+		msg(Text.literal(s));
 	}
 
 	private void clearPending() { pendingHash = pendingName = pendingMapId = null; pendingColors = null; }
