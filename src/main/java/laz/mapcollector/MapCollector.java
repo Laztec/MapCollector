@@ -60,7 +60,7 @@ public class MapCollector implements ClientModInitializer {
 
 	private enum DuplicateBehaviour { DENY, WARN, ALLOW }
 	private DuplicateBehaviour duplicateBehaviour = DuplicateBehaviour.WARN;
-
+	private int imageSize = 128;
 	private String pendingHash, pendingName, pendingMapId;
 	private byte[] pendingColors;
 
@@ -108,6 +108,29 @@ public class MapCollector implements ClientModInitializer {
 									}
 									saveConfig();
 									msg("Duplicate behaviour: " + duplicateBehaviour.name().toLowerCase());
+									return 1;
+								})))
+
+				.then(ClientCommandManager.literal("imageSize")
+						.then(ClientCommandManager.argument("size", StringArgumentType.word())
+								.suggests((ctx, builder) -> {
+									List<String> options = Arrays.asList("128", "256", "512", "1024");
+									for (String opt : options) {
+										if (opt.startsWith(builder.getRemainingLowerCase())) builder.suggest(opt);
+									}
+									return builder.buildFuture();
+								})
+								.executes(ctx -> {
+									String size = StringArgumentType.getString(ctx, "size");
+									switch (size) {
+										case "128" -> imageSize = 128;
+										case "256" -> imageSize = 256;
+										case "512" -> imageSize = 512;
+										case "1024" -> imageSize = 1024;
+										default -> { msg("Invalid size. Use 128/256/512/1024."); return 1; }
+									}
+									saveConfig();
+									msg("Image size: " + imageSize);
 									return 1;
 								}))));
 	}
@@ -235,6 +258,16 @@ public class MapCollector implements ClientModInitializer {
 		return img;
 	}
 
+	private BufferedImage scaleImage(BufferedImage base, int targetSize) {
+		BufferedImage scaled = new BufferedImage(targetSize, targetSize, BufferedImage.TYPE_INT_ARGB);
+		var g = scaled.createGraphics();
+		g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION,
+				java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+		g.drawImage(base, 0, 0, targetSize, targetSize, null);
+		g.dispose();
+		return scaled;
+	}
+
 	private Path getWorldFolder() {
 		MinecraftClient client = MinecraftClient.getInstance();
 		Path base = client.runDirectory.toPath().resolve(FOLDER);
@@ -252,8 +285,12 @@ public class MapCollector implements ClientModInitializer {
 
 	private void saveMapData(Path folder, String hash, String name, String mapId, byte[] colors) throws IOException {
 		Path pngPath = folder.resolve("map_" + hash + ".png");
+		BufferedImage img = mapToImage(colors);
+		if (imageSize != 128) {
+			img = scaleImage(img, imageSize);
+		}
 		try (OutputStream os = Files.newOutputStream(pngPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-			ImageIO.write(mapToImage(colors), "png", os);
+			ImageIO.write(img, "png", os);
 		}
 		Path indexPath = folder.resolve(INDEX);
 
@@ -307,6 +344,11 @@ public class MapCollector implements ClientModInitializer {
 				if (data != null) {
 					String mode = (String) data.get("duplicateBehaviour");
 					if (mode != null) duplicateBehaviour = DuplicateBehaviour.valueOf(mode.toUpperCase(Locale.ROOT));
+
+					Object sizeObj = data.get("imageSize");
+					if (sizeObj instanceof Integer i && List.of(128,256,512,1024).contains(i)) {
+						imageSize = i;
+					}
 				}
 			}
 		} catch (Exception e) { msg("Failed to load config."); }
@@ -319,6 +361,7 @@ public class MapCollector implements ClientModInitializer {
 			Yaml yaml = new Yaml();
 			Map<String, Object> data = new HashMap<>();
 			data.put("duplicateBehaviour", duplicateBehaviour.name().toLowerCase());
+			data.put("imageSize", imageSize);
 			Files.writeString(configPath, yaml.dump(data), StandardCharsets.UTF_8,
 					StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 		} catch (Exception e) { msg("Failed to save config."); }
