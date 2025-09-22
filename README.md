@@ -1,6 +1,8 @@
 # Map Collector
 
-Generates images of maps and stores hashes for duplicate-detection. Intended to aid in collecting map art on multiplayer servers.
+Generates images of maps and stores hashes for duplicate-detection.
+
+Intended to aid in collecting map art on multiplayer servers.
 
 The generated images and metadata can be found in `.minecraft/map-collector/`.
 
