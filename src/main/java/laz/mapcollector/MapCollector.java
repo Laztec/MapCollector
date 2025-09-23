@@ -155,7 +155,7 @@ public class MapCollector implements ClientModInitializer {
 
 			boolean duplicate = lines.stream().anyMatch(line -> {
 				String[] parts = line.split(",");
-				return parts.length >= 3 && parts[2].equals(hash);
+				return parts.length >= 4 && parts[3].equals(hash);
 			});
 
 			if (duplicate) {
@@ -187,8 +187,8 @@ public class MapCollector implements ClientModInitializer {
 			List<String> lines = Files.readAllLines(indexPath, StandardCharsets.UTF_8);
 			for (String line : lines) {
 				String[] parts = line.split(",");
-				if (parts.length >= 3 && parts[2].equals(hash)) {
-					msg("Duplicate of '" + parts[0] + "' (id: " + parts[1] + ")");
+				if (parts.length >= 4 && parts[3].equals(hash)) {
+					msg("Duplicate of '" + parts[1] + "' (map_" + parts[0] + ".png)");
 					return;
 				}
 			}
@@ -284,7 +284,10 @@ public class MapCollector implements ClientModInitializer {
 	}
 
 	private void saveMapData(Path folder, String hash, String name, String mapId, byte[] colors) throws IOException {
-		Path pngPath = folder.resolve("map_" + hash + ".png");
+		Path indexPath = folder.resolve(INDEX);
+		int fileId = getNextFileId(indexPath);
+
+		Path pngPath = folder.resolve("map_" + fileId + ".png");
 		BufferedImage img = mapToImage(colors);
 		if (imageSize != 128) {
 			img = scaleImage(img, imageSize);
@@ -292,19 +295,17 @@ public class MapCollector implements ClientModInitializer {
 		try (OutputStream os = Files.newOutputStream(pngPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
 			ImageIO.write(img, "png", os);
 		}
-		Path indexPath = folder.resolve(INDEX);
 
 		String safeName = name.replace(",", "");
-		String line = safeName + "," + mapId + "," + hash;
+		String line = fileId + "," + safeName + "," + mapId + "," + hash;
 		Files.write(indexPath, Collections.singletonList(line), StandardCharsets.UTF_8,
 				Files.exists(indexPath) ? StandardOpenOption.APPEND : StandardOpenOption.CREATE);
 
-		Text clickable = Text.literal("Saved map: " + pngPath.getFileName())
+		Text clickable = Text.literal("Saved: '" + safeName + "' (" + pngPath.getFileName() + ")" )
 				.styled(style -> style.withClickEvent(
 						new net.minecraft.text.ClickEvent.OpenFile(
 								pngPath.toAbsolutePath().toString()
 						)));
-
 		msg(clickable);
 	}
 
@@ -314,6 +315,21 @@ public class MapCollector implements ClientModInitializer {
 		StringBuilder sb = new StringBuilder();
 		for (byte b : digest) sb.append(String.format("%02x", b));
 		return sb.toString();
+	}
+
+	private int getNextFileId(Path indexPath) throws IOException {
+		List<String> lines = Files.exists(indexPath)
+				? Files.readAllLines(indexPath, StandardCharsets.UTF_8)
+				: new ArrayList<>();
+		if (lines.isEmpty()) return 1;
+
+		String last = lines.get(lines.size() - 1);
+		String[] parts = last.split(",");
+		try {
+			return Integer.parseInt(parts[0]) + 1;
+		} catch (Exception e) {
+			return 1;
+		}
 	}
 
 	private void msg(Text extra) {
