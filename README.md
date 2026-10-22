@@ -17,7 +17,7 @@ Intended to aid in collecting map art on multiplayer servers.
 | `/map check`                                    | Checks if the current held map exists in your saved collection. (Visual match)                             |
 | `/map imageSize` `<128\|256\|512\|1024>`        | Configures the image size to generate. Default is `128`px.                                                 |
 | `/map duplicateBehaviour` `<allow\|warn\|deny>` | Configures the behaviour when attempting to save a duplicate map. Default is `warn`.                       |
-| `/map confirm`                                  | Confirms the save attempt when using `defaultBehaviour warn`                                               |
+| `/map confirm`                                  | Confirms the save attempt when using `duplicateBehaviour warn`                                             |
 
 ## Installation
 
