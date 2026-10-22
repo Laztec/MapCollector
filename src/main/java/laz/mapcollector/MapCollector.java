@@ -151,9 +151,10 @@ public class MapCollector implements ClientModInitializer {
 			Path folder = getWorldFolder();
 			Files.createDirectories(folder);
 			Path indexPath = folder.resolve(INDEX);
-			List<String> lines = Files.exists(indexPath) ? Files.readAllLines(indexPath, StandardCharsets.UTF_8) : new ArrayList<>();
+			ensureHeader(indexPath);
+			List<String> lines = Files.readAllLines(indexPath, StandardCharsets.UTF_8);
 
-			boolean duplicate = lines.stream().anyMatch(line -> {
+			boolean duplicate = lines.stream().skip(1).anyMatch(line -> {
 				String[] parts = line.split(",");
 				return parts.length >= 4 && parts[3].equals(hash);
 			});
@@ -183,9 +184,10 @@ public class MapCollector implements ClientModInitializer {
 			String hash = mapHash(mapData.colors);
 			Path indexPath = getWorldFolder().resolve(INDEX);
 			if (!Files.exists(indexPath)) { msg("No map file found."); return; }
+			ensureHeader(indexPath);
 
 			List<String> lines = Files.readAllLines(indexPath, StandardCharsets.UTF_8);
-			for (String line : lines) {
+			for (String line : lines.stream().skip(1).toList()) {
 				String[] parts = line.split(",");
 				if (parts.length >= 4 && parts[3].equals(hash)) {
 					msg("Duplicate of '" + parts[1] + "' (map_" + parts[0] + ".png)");
@@ -201,6 +203,7 @@ public class MapCollector implements ClientModInitializer {
 		try {
 			Path folder = getWorldFolder();
 			Files.createDirectories(folder);
+			ensureHeader(folder.resolve(INDEX));
 			saveMapData(folder, pendingHash, pendingName, pendingMapId, pendingColors);
 		} catch (Exception e) { msg("Error: " + e.getMessage()); }
 		finally { clearPending(); }
@@ -292,14 +295,14 @@ public class MapCollector implements ClientModInitializer {
 		if (imageSize != 128) {
 			img = scaleImage(img, imageSize);
 		}
-		try (OutputStream os = Files.newOutputStream(pngPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+		try (OutputStream os = Files.newOutputStream(pngPath, StandardOpenOption.CREATE_NEW)) {
 			ImageIO.write(img, "png", os);
 		}
 
 		String safeName = name.replace(",", "");
 		String line = fileId + "," + safeName + "," + mapId + "," + hash;
 		Files.write(indexPath, Collections.singletonList(line), StandardCharsets.UTF_8,
-				Files.exists(indexPath) ? StandardOpenOption.APPEND : StandardOpenOption.CREATE);
+				StandardOpenOption.APPEND);
 
 		Text clickable = Text.literal("Saved: '" + safeName + "' (" + pngPath.getFileName() + ")" )
 				.styled(style -> style.withClickEvent(
@@ -317,18 +320,32 @@ public class MapCollector implements ClientModInitializer {
 		return sb.toString();
 	}
 
-	private int getNextFileId(Path indexPath) throws IOException {
-		List<String> lines = Files.exists(indexPath)
-				? Files.readAllLines(indexPath, StandardCharsets.UTF_8)
-				: new ArrayList<>();
-		if (lines.isEmpty()) return 1;
+	private void ensureHeader(Path indexPath) throws IOException {
+		String header = "fileId,name,mapId,hash";
+		if (!Files.exists(indexPath)) {
+			Files.write(indexPath, Collections.singletonList(header), StandardCharsets.UTF_8,
+					StandardOpenOption.CREATE_NEW);
+			return;
+		}
 
-		String last = lines.get(lines.size() - 1);
-		String[] parts = last.split(",");
+		List<String> lines = Files.readAllLines(indexPath, StandardCharsets.UTF_8);
+		if (!lines.isEmpty() && lines.get(0).equals(header)) return;
+
+		// Preserve older collections created without a CSV header.
+		lines.add(0, header);
+		Files.write(indexPath, lines, StandardCharsets.UTF_8,
+				StandardOpenOption.TRUNCATE_EXISTING);
+	}
+
+	private int getNextFileId(Path indexPath) throws IOException {
+		List<String> lines = Files.readAllLines(indexPath, StandardCharsets.UTF_8);
+		if (lines.size() <= 1) return 1;
+
+		String[] parts = lines.get(lines.size() - 1).split(",");
 		try {
 			return Integer.parseInt(parts[0]) + 1;
 		} catch (Exception e) {
-			return 1;
+			throw new IOException("Invalid file ID in " + INDEX, e);
 		}
 	}
 
