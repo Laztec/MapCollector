@@ -10,23 +10,23 @@ package laz.mapcollector;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.MapIdComponent;
-import net.minecraft.item.FilledMapItem;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.map.MapState;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.Hand;
-import net.minecraft.util.WorldSavePath;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.MapItem;
+import net.minecraft.world.level.saveddata.maps.MapId;
+import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
+import net.minecraft.world.level.storage.LevelResource;
 import org.yaml.snakeyaml.Yaml;
 
 import javax.imageio.ImageIO;
@@ -74,23 +74,23 @@ public class MapCollector implements ClientModInitializer {
 	}
 
 	private void registerCommands(CommandDispatcher<FabricClientCommandSource> dispatcher,
-								  net.minecraft.command.CommandRegistryAccess registryAccess) {
+								  net.minecraft.commands.CommandBuildContext registryAccess) {
 
-		dispatcher.register(ClientCommandManager.literal("map")
+		dispatcher.register(ClientCommands.literal("map")
 
-				.then(ClientCommandManager.literal("save")
-						.then(ClientCommandManager.argument("name", StringArgumentType.greedyString())
+				.then(ClientCommands.literal("save")
+						.then(ClientCommands.argument("name", StringArgumentType.greedyString())
 								.executes(ctx -> { saveCommand(StringArgumentType.getString(ctx, "name")); return 1; }))
 						.executes(ctx -> { saveCommand(null); return 1; }))
 
-				.then(ClientCommandManager.literal("check")
+				.then(ClientCommands.literal("check")
 						.executes(ctx -> { checkCommand(); return 1; }))
 
-				.then(ClientCommandManager.literal("confirm")
+				.then(ClientCommands.literal("confirm")
 						.executes(ctx -> { confirmCommand(); return 1; }))
 
-				.then(ClientCommandManager.literal("duplicateBehaviour")
-						.then(ClientCommandManager.argument("mode", StringArgumentType.word())
+				.then(ClientCommands.literal("duplicateBehaviour")
+						.then(ClientCommands.argument("mode", StringArgumentType.word())
 								.suggests((ctx, builder) -> {
 									List<String> options = Arrays.asList("deny", "warn", "allow");
 									for (String opt : options) {
@@ -111,8 +111,8 @@ public class MapCollector implements ClientModInitializer {
 									return 1;
 								})))
 
-				.then(ClientCommandManager.literal("imageSize")
-						.then(ClientCommandManager.argument("size", StringArgumentType.word())
+				.then(ClientCommands.literal("imageSize")
+						.then(ClientCommands.argument("size", StringArgumentType.word())
 								.suggests((ctx, builder) -> {
 									List<String> options = Arrays.asList("128", "256", "512", "1024");
 									for (String opt : options) {
@@ -146,7 +146,7 @@ public class MapCollector implements ClientModInitializer {
 
 		try {
 			String hash = mapHash(mapData.colors);
-			String name = (overrideName != null && !overrideName.isBlank()) ? overrideName : mapData.stack.getName().getString();
+			String name = (overrideName != null && !overrideName.isBlank()) ? overrideName : mapData.stack.getHoverName().getString();
 
 			Path folder = getWorldFolder();
 			Files.createDirectories(folder);
@@ -212,21 +212,21 @@ public class MapCollector implements ClientModInitializer {
 	// ---------------------
 	// | Utilities
 	// ---------------------
-	private record MapData(ItemStack stack, MapState state, byte[] colors, String mapId) {}
+	private record MapData(ItemStack stack, MapItemSavedData state, byte[] colors, String mapId) {}
 
 	private MapData getHeldMap() {
-		MinecraftClient client = MinecraftClient.getInstance();
-		ClientPlayerEntity player = client.player;
+		Minecraft client = Minecraft.getInstance();
+		LocalPlayer player = client.player;
 		if (player == null) return null;
 
-		ItemStack held = player.getStackInHand(Hand.MAIN_HAND);
-		if (!(held.getItem() instanceof FilledMapItem)) { msg("Hold a map in your main hand."); return null; }
-		MapState state = FilledMapItem.getMapState(held, client.world);
+		ItemStack held = player.getItemInHand(InteractionHand.MAIN_HAND);
+		if (!(held.getItem() instanceof MapItem)) { msg("Hold a map in your main hand."); return null; }
+		MapItemSavedData state = MapItem.getSavedData(held, client.level);
 		if (state == null) { msg("Map data not loaded yet. Try again."); return null; }
 		byte[] colors = state.colors;
 		if (colors == null || colors.length != MAP_SIZE * MAP_SIZE) { msg("Map colors missing or invalid."); return null; }
 
-		MapIdComponent idComp = held.get(DataComponentTypes.MAP_ID);
+		MapId idComp = held.get(DataComponents.MAP_ID);
 		String mapId = (idComp != null) ? String.valueOf(idComp.id()) : "unknown";
 		return new MapData(held, state, colors, mapId);
 	}
@@ -272,14 +272,14 @@ public class MapCollector implements ClientModInitializer {
 	}
 
 	private Path getWorldFolder() {
-		MinecraftClient client = MinecraftClient.getInstance();
-		Path base = client.runDirectory.toPath().resolve(FOLDER);
+		Minecraft client = Minecraft.getInstance();
+		Path base = client.gameDirectory.toPath().resolve(FOLDER);
 
-		if (client.isInSingleplayer() && client.getServer() != null) {
-			String worldName = client.getServer().getSavePath(WorldSavePath.ROOT).getParent().getFileName().toString();
+		if (client.isLocalServer() && client.getSingleplayerServer() != null) {
+			String worldName = client.getSingleplayerServer().getWorldPath(LevelResource.ROOT).getParent().getFileName().toString();
 			return base.resolve("singleplayer_" + worldName);
-		} else if (client.getCurrentServerEntry() != null) {
-			String address = client.getCurrentServerEntry().address.split(":")[0];
+		} else if (client.getCurrentServer() != null) {
+			String address = client.getCurrentServer().ip.split(":")[0];
 			return base.resolve(address);
 		} else {
 			return base.resolve("unknown");
@@ -304,9 +304,9 @@ public class MapCollector implements ClientModInitializer {
 		Files.write(indexPath, Collections.singletonList(line), StandardCharsets.UTF_8,
 				StandardOpenOption.APPEND);
 
-		Text clickable = Text.literal("Saved: '" + safeName + "' (" + pngPath.getFileName() + ")" )
-				.styled(style -> style.withClickEvent(
-						new net.minecraft.text.ClickEvent.OpenFile(
+		Component clickable = Component.literal("Saved: '" + safeName + "' (" + pngPath.getFileName() + ")" )
+				.withStyle(style -> style.withClickEvent(
+						new net.minecraft.network.chat.ClickEvent.OpenFile(
 								pngPath.toAbsolutePath().toString()
 						)));
 		msg(clickable);
@@ -349,17 +349,17 @@ public class MapCollector implements ClientModInitializer {
 		}
 	}
 
-	private void msg(Text extra) {
-		MinecraftClient client = MinecraftClient.getInstance();
+	private void msg(Component extra) {
+		Minecraft client = Minecraft.getInstance();
 		if (client.player != null) {
-			MutableText prefix = Text.literal("[Map Collector] ").formatted(Formatting.GOLD);
-			MutableText body   = extra.copy().formatted(Formatting.WHITE);
-			client.player.sendMessage(prefix.append(body), false);
+			MutableComponent prefix = Component.literal("[Map Collector] ").withStyle(ChatFormatting.GOLD);
+			MutableComponent body   = extra.copy().withStyle(ChatFormatting.WHITE);
+			client.player.sendSystemMessage(prefix.append(body));
 		}
 	}
 
 	private void msg(String s) {
-		msg(Text.literal(s));
+		msg(Component.literal(s));
 	}
 
 	private void clearPending() { pendingHash = pendingName = pendingMapId = null; pendingColors = null; }
@@ -369,7 +369,7 @@ public class MapCollector implements ClientModInitializer {
 	// ---------------------
 	private void loadConfig() {
 		try {
-			Path configPath = MinecraftClient.getInstance().runDirectory.toPath().resolve(CONFIG_FOLDER).resolve(CONFIG_FILE);
+			Path configPath = Minecraft.getInstance().gameDirectory.toPath().resolve(CONFIG_FOLDER).resolve(CONFIG_FILE);
 			if (!Files.exists(configPath)) { saveConfig(); return; }
 			Yaml yaml = new Yaml();
 			try (var in = Files.newInputStream(configPath)) {
@@ -389,7 +389,7 @@ public class MapCollector implements ClientModInitializer {
 
 	private void saveConfig() {
 		try {
-			Path configPath = MinecraftClient.getInstance().runDirectory.toPath().resolve(CONFIG_FOLDER).resolve(CONFIG_FILE);
+			Path configPath = Minecraft.getInstance().gameDirectory.toPath().resolve(CONFIG_FOLDER).resolve(CONFIG_FILE);
 			Files.createDirectories(configPath.getParent());
 			Yaml yaml = new Yaml();
 			Map<String, Object> data = new HashMap<>();
