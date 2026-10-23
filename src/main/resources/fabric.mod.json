@@ -1,7 +1,7 @@
 {
 	"schemaVersion": 1,
 	"id": "map-collector",
-	"version": "1.1.0+1.21.10",
+	"version": "1.1.0+1.21.11",
 	"name": "Map Collector",
 	"description": "Generates images of maps and stores hashes for duplicate-detection",
 	"authors": ["Laztec"],
@@ -12,7 +12,7 @@
 	"depends": {
 		"fabricloader": ">=0.15.0",
 		"fabric-api": "*",
-		"minecraft": ["1.21.10"],
+		"minecraft": ["1.21.11"],
 		"java": ">=21"
 	}
 }
